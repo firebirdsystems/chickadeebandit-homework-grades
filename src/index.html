@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <base href="/run/homework-grades/" />
+  <title>Homework &amp; Grades</title>
+  <style>
+    :root {
+      --bg: var(--hub-bg, #f9fafb);
+      --surface: var(--hub-surface, #ffffff);
+      --border: var(--hub-border, #e5e7eb);
+      --text: var(--hub-text, #111827);
+      --muted: var(--hub-text-muted, #6b7280);
+      --primary: var(--hub-primary, #2563eb);
+      --primary-fg: var(--hub-primary-fg, #ffffff);
+      --primary-hover: var(--hub-primary-hover, #1d4ed8);
+      --radius: var(--hub-radius, 10px);
+      --font: var(--hub-font, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      --font-size: var(--hub-font-size, 15px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); font-size: var(--font-size); background: var(--bg); color: var(--text); min-height: 100vh; }
+    .page { max-width: 680px; margin: 0 auto; padding: 20px 16px 48px; }
+
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .header h1 { font-size: 1.4rem; font-weight: 700; }
+    .btn-primary { background: var(--primary); color: var(--primary-fg); border: none; border-radius: var(--radius); padding: 9px 16px; font-size: 0.875rem; font-weight: 600; cursor: pointer; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tab { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; font-size: 0.85rem; cursor: pointer; color: var(--muted); }
+    .tab:hover { color: var(--text); }
+    .tab.active { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); font-weight: 600; }
+
+    .view-toggle { display: flex; gap: 6px; margin-bottom: 16px; }
+    .view-btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; cursor: pointer; background: var(--surface); color: var(--muted); }
+    .view-btn:hover { color: var(--text); }
+    .view-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
+
+    .assignment-list { display: flex; flex-direction: column; gap: 10px; }
+    .assignment-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px; }
+    .assignment-card:hover .card-actions { opacity: 1; }
+    .card-left { flex: 1; min-width: 0; }
+    .card-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 5px; }
+    .subject-chip { font-size: 0.75rem; font-weight: 600; padding: 2px 10px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+    .status-badge { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 8px; }
+    .status-pending   { background: #fef9c3; color: #854d0e; }
+    .status-submitted { background: #dbeafe; color: #1e40af; }
+    .status-graded    { background: #dcfce7; color: #14532d; }
+    .grade-chip { font-size: 0.82rem; font-weight: 700; background: var(--bg); border: 1px solid var(--border); padding: 1px 8px; border-radius: 6px; }
+    .member-badge { font-size: 0.73rem; background: var(--bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 10px; color: var(--muted); }
+    .card-title { font-weight: 600; font-size: 0.95rem; }
+    .card-meta { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+    .due-date { font-size: 0.8rem; color: var(--muted); }
+    .due-date.overdue { color: #ef4444; font-weight: 600; }
+    .due-date.today { color: #d97706; font-weight: 600; }
+    .card-notes { font-size: 0.82rem; color: var(--muted); margin-top: 4px; font-style: italic; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .card-actions { opacity: 0; display: flex; gap: 6px; flex-shrink: 0; transition: opacity 0.15s; align-items: flex-start; }
+    .btn-icon { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 0.8rem; cursor: pointer; color: var(--muted); line-height: 1; }
+    .btn-icon:hover { background: var(--bg); color: var(--text); }
+    .btn-icon.danger:hover { border-color: #ef4444; color: #ef4444; }
+
+    /* Grade summary view */
+    .summary-grid { display: flex; flex-direction: column; gap: 14px; }
+    .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .summary-header { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .summary-meta { font-size: 0.8rem; color: var(--muted); font-weight: 400; }
+    .summary-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .summary-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem; }
+    .summary-subject { color: var(--muted); font-size: 0.8rem; }
+    .grade-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+    .grade-tag { font-size: 0.75rem; background: var(--bg); border: 1px solid var(--border); padding: 1px 7px; border-radius: 4px; font-weight: 600; }
+    .no-grades { font-size: 0.78rem; color: var(--muted); }
+    .summary-empty { padding: 12px 16px; font-size: 0.85rem; color: var(--muted); }
+
+    .empty { text-align: center; padding: 48px 24px; color: var(--muted); }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-title { font-weight: 600; color: var(--text); font-size: 1rem; margin-bottom: 6px; }
+
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+    .modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; }
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 5px; }
+    .field label .opt { color: var(--muted); font-weight: 400; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .field-row .field { margin: 0; }
+    input[type=text], input[type=date], textarea, select {
+      width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+      font-size: 0.9rem; font-family: var(--font); background: var(--bg); color: var(--text);
+    }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary); border-color: transparent; }
+    textarea { resize: vertical; min-height: 72px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .btn-ghost { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 16px; font-size: 0.875rem; cursor: pointer; color: var(--text); }
+    .btn-ghost:hover { background: var(--bg); }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <h1>📝 Homework &amp; Grades</h1>
+    <button class="btn-primary" onclick="openAddModal()">+ Add Assignment</button>
+  </div>
+  <div id="demo-bar" style="display:none;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:16px;align-items:center;gap:8px;flex-wrap:wrap;"></div>
+  <div class="tabs" id="member-tabs"></div>
+  <div id="view-toggle-area"></div>
+  <div class="tabs" id="status-tabs"></div>
+  <div id="main-content"></div>
+</div>
+
+<script type="module">
+import { esc, isAdult, hubConfirm } from "/hub-sdk.js";
+
+const CONTEXT = window.__CONTEXT_URL ?? "";
+const DB      = window.__DB_URL ?? "";
+const ME      = window.__CURRENT_MEMBER ?? null;
+
+let demoMe        = null;
+const me          = () => demoMe ?? ME;
+
+let members        = [];
+let assignments    = [];
+let activeMemberId = null;
+let activeStatus   = "all";
+let activeView     = "list";
+let modalEl        = null;
+
+const SUBJECTS = ["Math", "English", "Science", "History", "Geography", "Art", "Music", "PE", "Other"];
+const STATUSES = [
+  { id: "all",       label: "All" },
+  { id: "pending",   label: "Pending" },
+  { id: "submitted", label: "Submitted" },
+  { id: "graded",    label: "Graded" },
+];
+
+async function dbq(sql, params = []) {
+  if (!DB) return { rows: [] };
+  const r = await fetch(DB, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sql, params }),
+  });
+  return r.json();
+}
+
+async function loadMembers() {
+  if (!CONTEXT) {
+    members = [
+      { id: "d1", name: "Parent", role: "adult" },
+      { id: "d2", name: "Alex", role: "child" },
+      { id: "d3", name: "Jordan", role: "child" },
+    ];
+    return;
+  }
+  try {
+    const res = await fetch(`${CONTEXT}?keys=family.members`);
+    members = ((await res.json())["family.members"]) ?? [];
+  } catch { members = []; }
+}
+
+async function loadAssignments() {
+  const { rows } = await dbq(
+    `SELECT * FROM assignments WHERE household_id = current_setting('app.household_id', true)::uuid ORDER BY due_date ASC NULLS LAST, created_at DESC`
+  );
+  if (rows?.length) {
+    assignments = rows;
+  } else if (!DB) {
+    const today = new Date().toISOString().slice(0, 10);
+    assignments = [
+      { id: "s1", member_id: "d2", subject: "Math", title: "Chapter 5 Worksheet", due_date: today, status: "pending", grade: "", notes: "", created_at: "", updated_at: "" },
+      { id: "s2", member_id: "d2", subject: "English", title: "Book Report: Charlotte's Web", due_date: "2026-06-05", status: "submitted", grade: "", notes: "", created_at: "", updated_at: "" },
+      { id: "s3", member_id: "d3", subject: "Science", title: "Volcano Project", due_date: "2026-05-28", status: "graded", grade: "A", notes: "Extra credit received!", created_at: "", updated_at: "" },
+      { id: "s4", member_id: "d3", subject: "Math", title: "Multiplication Test", due_date: "2026-05-25", status: "graded", grade: "B+", notes: "", created_at: "", updated_at: "" },
+      { id: "s5", member_id: "d2", subject: "History", title: "Civil War Essay", due_date: "2026-06-10", status: "pending", grade: "", notes: "Need to finish bibliography.", created_at: "", updated_at: "" },
+    ];
+  } else {
+    assignments = [];
+  }
+}
+
+const amAdult    = () => { const m = me(); return m ? isAdult(m, members) : false; };
+const memberName = id => members.find(m => m.id === id)?.name ?? "Unknown";
+
+function scopedAssignments() {
+  const currentMe = me();
+  if (activeMemberId) return assignments.filter(a => a.member_id === activeMemberId);
+  if (currentMe && !isAdult(currentMe, members)) return assignments.filter(a => a.member_id === currentMe.id);
+  return assignments;
+}
+
+function filteredAssignments() {
+  const scoped = scopedAssignments();
+  if (activeStatus === "all") return scoped;
+  return scoped.filter(a => a.status === activeStatus);
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const isOverdue = a => a.due_date && a.status !== "graded" && a.due_date < today();
+const isToday   = a => a.due_date === today();
+
+function fmtDate(s) {
+  if (!s) return "";
+  try { return new Date(s + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
+  catch { return s; }
+}
+
+function renderTabs() {
+  const el = document.getElementById("member-tabs");
+  if (!amAdult()) { el.innerHTML = ""; return; }
+  const tabs = [{ id: null, label: "Everyone" }, ...members.map(m => ({ id: m.id, label: m.name }))];
+  el.innerHTML = tabs.map(t =>
+    `<button class="tab ${activeMemberId === t.id ? "active" : ""}" onclick="setMember(${t.id === null ? "null" : `'${esc(t.id)}'`})">${esc(t.label)}</button>`
+  ).join("");
+}
+
+function renderViewToggle() {
+  const el = document.getElementById("view-toggle-area");
+  if (!amAdult()) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="view-toggle">
+    <button class="view-btn ${activeView === "list" ? "active" : ""}" onclick="setView('list')">Assignments</button>
+    <button class="view-btn ${activeView === "summary" ? "active" : ""}" onclick="setView('summary')">Grade Summary</button>
+  </div>`;
+}
+
+function renderStatusTabs() {
+  const el = document.getElementById("status-tabs");
+  if (activeView === "summary") { el.innerHTML = ""; return; }
+  const scoped = scopedAssignments();
+  const counts = { all: scoped.length, pending: 0, submitted: 0, graded: 0 };
+  scoped.forEach(a => { if (counts[a.status] !== undefined) counts[a.status]++; });
+  el.innerHTML = STATUSES.map(s =>
+    `<button class="tab ${activeStatus === s.id ? "active" : ""}" onclick="setStatus('${s.id}')">
+      ${s.label}${counts[s.id] ? ` <span style="opacity:0.65">(${counts[s.id]})</span>` : ""}
+    </button>`
+  ).join("");
+}
+
+function renderContent() {
+  const el = document.getElementById("main-content");
+  if (activeView === "summary" && amAdult()) { renderSummary(el); return; }
+  renderList(el);
+}
+
+function renderList(el) {
+  const vis        = filteredAssignments();
+  const showMember = amAdult() && !activeMemberId;
+
+  if (!vis.length) {
+    const qualifier = activeStatus !== "all" ? ` with status "${activeStatus}"` : "";
+    el.innerHTML = `<div class="empty">
+      <div class="empty-icon">📚</div>
+      <div class="empty-title">No assignments${qualifier}</div>
+      <div>Tap "+ Add Assignment" to get started.</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="assignment-list">${vis.map(a => {
+    const canEdit  = amAdult() || a.member_id === me()?.id;
+    const overdue  = isOverdue(a);
+    const todayDue = isToday(a);
+    const dueCls   = overdue ? "overdue" : todayDue ? "today" : "";
+    const dueLabel = overdue
+      ? `Overdue · ${fmtDate(a.due_date)}`
+      : todayDue ? "Due today"
+      : a.due_date ? `Due ${fmtDate(a.due_date)}`
+      : "";
+    return `<div class="assignment-card">
+      <div class="card-left">
+        <div class="card-top">
+          <span class="subject-chip">${esc(a.subject)}</span>
+          <span class="status-badge status-${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
+          ${a.grade ? `<span class="grade-chip">${esc(a.grade)}</span>` : ""}
+          ${showMember ? `<span class="member-badge">${esc(memberName(a.member_id))}</span>` : ""}
+        </div>
+        <div class="card-title">${esc(a.title)}</div>
+        ${dueLabel ? `<div class="card-meta"><span class="due-date ${dueCls}">${dueLabel}</span></div>` : ""}
+        ${a.notes ? `<div class="card-notes">${esc(a.notes)}</div>` : ""}
+      </div>
+      ${canEdit ? `<div class="card-actions">
+        <button class="btn-icon" onclick="openEditModal('${esc(a.id)}')">✏️</button>
+        <button class="btn-icon danger" onclick="deleteAssignment('${esc(a.id)}')">🗑</button>
+      </div>` : ""}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderSummary(el) {
+  const children = activeMemberId
+    ? members.filter(m => m.id === activeMemberId)
+    : members.filter(m => m.role === "child");
+
+  if (!children.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">No children found</div></div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="summary-grid">${children.map(member => {
+    const memberAssignments = assignments.filter(a => a.member_id === member.id);
+    const pending  = memberAssignments.filter(a => a.status === "pending").length;
+    const graded   = memberAssignments.filter(a => a.grade).length;
+
+    const bySubject = {};
+    memberAssignments.forEach(a => {
+      if (!bySubject[a.subject]) bySubject[a.subject] = [];
+      bySubject[a.subject].push(a);
+    });
+
+    const rows = Object.entries(bySubject).map(([subj, items]) => {
+      const grades = items.filter(a => a.grade).map(a => a.grade);
+      return `<div class="summary-row">
+        <span>${esc(subj)}</span>
+        <div class="grade-tags">
+          ${grades.length
+            ? grades.map(g => `<span class="grade-tag">${esc(g)}</span>`).join("")
+            : `<span class="no-grades">${items.length} assignment${items.length !== 1 ? "s" : ""}, no grades yet</span>`
+          }
+        </div>
+      </div>`;
+    }).join("");
+
+    return `<div class="summary-card">
+      <div class="summary-header">
+        <span>${esc(member.name)}</span>
+        <span class="summary-meta">${memberAssignments.length} total · ${pending} pending · ${graded} graded</span>
+      </div>
+      ${rows ? `<div class="summary-body">${rows}</div>` : `<div class="summary-empty">No assignments logged yet.</div>`}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderDemoBar() {
+  const el = document.getElementById("demo-bar");
+  if (!el) return;
+  if (CONTEXT) { el.style.display = "none"; return; }
+  el.style.display = "flex";
+  el.innerHTML = `<span style="color:#92400e;font-weight:600;font-size:0.8rem">Demo — Preview as:</span>`
+    + members.map(m => {
+      const active = demoMe?.id === m.id;
+      return `<button onclick="setDemoMe('${esc(m.id)}')" style="padding:3px 10px;border-radius:6px;font-size:0.8rem;cursor:pointer;border:1px solid ${active ? "#d97706" : "var(--border)"};background:${active ? "#fde68a" : "var(--surface)"};font-weight:${active ? "600" : "400"}">${esc(m.name)} (${m.role})</button>`;
+    }).join("");
+}
+
+window.setDemoMe = function(id) {
+  demoMe = members.find(x => x.id === id) ?? null;
+  activeMemberId = (demoMe && !isAdult(demoMe, members)) ? demoMe.id : null;
+  render();
+};
+
+function render() { renderDemoBar(); renderTabs(); renderViewToggle(); renderStatusTabs(); renderContent(); }
+
+function openModal(html) {
+  closeModal();
+  modalEl = document.createElement("div");
+  modalEl.className = "modal-backdrop";
+  modalEl.innerHTML = `<div class="modal">${html}</div>`;
+  modalEl.addEventListener("click", e => { if (e.target === modalEl) closeModal(); });
+  document.body.appendChild(modalEl);
+}
+function closeModal() { modalEl?.remove(); modalEl = null; }
+
+function memberSelectHtml(selectedId) {
+  return members.map(m =>
+    `<option value="${esc(m.id)}" ${m.id === selectedId ? "selected" : ""}>${esc(m.name)}</option>`
+  ).join("");
+}
+
+function subjectSelectHtml(selected) {
+  return SUBJECTS.map(s => `<option value="${esc(s)}" ${s === selected ? "selected" : ""}>${esc(s)}</option>`).join("");
+}
+
+window.openAddModal = function() {
+  const forField = amAdult()
+    ? `<div class="field"><label>For</label><select id="f-member">${memberSelectHtml(activeMemberId ?? me()?.id ?? members[0]?.id)}</select></div>`
+    : "";
+  openModal(`
+    <div class="modal-title">Add Assignment</div>
+    ${forField}
+    <div class="field-row">
+      <div class="field"><label>Subject</label><select id="f-subject">${subjectSelectHtml("Math")}</select></div>
+      <div class="field"><label>Status</label>
+        <select id="f-status">
+          <option value="pending">Pending</option>
+          <option value="submitted">Submitted</option>
+          <option value="graded">Graded</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Title <span class="opt">*</span></label><input type="text" id="f-title" placeholder="Assignment name" maxlength="200" /></div>
+    <div class="field-row">
+      <div class="field"><label>Due Date <span class="opt">(optional)</span></label><input type="date" id="f-due" /></div>
+      <div class="field"><label>Grade <span class="opt">(optional)</span></label><input type="text" id="f-grade" placeholder="A, B+, 95%" maxlength="20" /></div>
+    </div>
+    <div class="field"><label>Notes <span class="opt">(optional)</span></label><textarea id="f-notes" placeholder="Additional notes…" maxlength="1000"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitAssignment(null)">Add Assignment</button>
+    </div>
+  `);
+  requestAnimationFrame(() => document.getElementById("f-title")?.focus());
+};
+
+window.openEditModal = function(id) {
+  const a = assignments.find(x => x.id === id);
+  if (!a) return;
+  openModal(`
+    <div class="modal-title">Edit Assignment</div>
+    <div class="field-row">
+      <div class="field"><label>Subject</label><select id="f-subject">${subjectSelectHtml(a.subject)}</select></div>
+      <div class="field"><label>Status</label>
+        <select id="f-status">
+          <option value="pending" ${a.status === "pending" ? "selected" : ""}>Pending</option>
+          <option value="submitted" ${a.status === "submitted" ? "selected" : ""}>Submitted</option>
+          <option value="graded" ${a.status === "graded" ? "selected" : ""}>Graded</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Title <span class="opt">*</span></label><input type="text" id="f-title" value="${esc(a.title)}" maxlength="200" /></div>
+    <div class="field-row">
+      <div class="field"><label>Due Date</label><input type="date" id="f-due" value="${esc(a.due_date || "")}" /></div>
+      <div class="field"><label>Grade <span class="opt">(optional)</span></label><input type="text" id="f-grade" value="${esc(a.grade || "")}" placeholder="A, B+, 95%" maxlength="20" /></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="f-notes" maxlength="1000">${esc(a.notes || "")}</textarea></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitAssignment('${esc(id)}')">Save</button>
+    </div>
+  `);
+};
+
+window.setMember = function(id) { activeMemberId = id; render(); };
+window.setStatus = function(s)  { activeStatus = s; render(); };
+window.setView   = function(v)  { activeView = v; render(); };
+window.closeModal = closeModal;
+
+window.submitAssignment = async function(existingId) {
+  const title = document.getElementById("f-title").value.trim();
+  if (!title) { document.getElementById("f-title").focus(); return; }
+
+  const subject  = document.getElementById("f-subject").value;
+  const status   = document.getElementById("f-status").value;
+  const dueDate  = document.getElementById("f-due").value || "";
+  const grade    = document.getElementById("f-grade").value.trim();
+  const notes    = document.getElementById("f-notes").value.trim();
+  const memberId = document.getElementById("f-member")?.value ?? me()?.id ?? "";
+
+  const btn = modalEl?.querySelector(".modal-actions .btn-primary");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+
+  try {
+    const now = new Date().toISOString();
+    if (existingId) {
+      await dbq(
+        `UPDATE assignments SET subject=$1, title=$2, due_date=$3, status=$4, grade=$5, notes=$6, updated_at=$7 WHERE id=$8 AND household_id=current_setting('app.household_id',true)::uuid`,
+        [subject, title, dueDate, status, grade, notes, now, existingId]
+      );
+      assignments = assignments.map(a => a.id === existingId
+        ? { ...a, subject, title, due_date: dueDate, status, grade, notes, updated_at: now }
+        : a
+      );
+    } else {
+      const id = crypto.randomUUID();
+      await dbq(
+        `INSERT INTO assignments (id, household_id, member_id, subject, title, due_date, status, grade, notes, created_at, updated_at) VALUES ($1, current_setting('app.household_id',true)::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+        [id, memberId, subject, title, dueDate, status, grade, notes, now]
+      );
+      assignments.unshift({ id, member_id: memberId, subject, title, due_date: dueDate, status, grade, notes, created_at: now, updated_at: now });
+    }
+    closeModal();
+    render();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = existingId ? "Save" : "Add Assignment"; }
+    alert(`Error saving assignment: ${e.message}`);
+  }
+};
+
+window.deleteAssignment = async function(id) {
+  const ok = await hubConfirm({ message: "Delete this assignment?", confirmLabel: "Delete", destructive: true });
+  if (!ok) return;
+  await dbq(`DELETE FROM assignments WHERE id=$1 AND household_id=current_setting('app.household_id',true)::uuid`, [id]);
+  assignments = assignments.filter(a => a.id !== id);
+  render();
+};
+
+(async () => {
+  await loadMembers();
+  if (!ME && !CONTEXT) {
+    demoMe = members.find(m => m.role === "adult") ?? members[0] ?? null;
+  }
+  if (me() && !amAdult()) activeMemberId = me().id;
+  await loadAssignments();
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "id": "homework-grades",
+  "name": "Homework & Grades",
+  "version": "1.0.0",
+  "description": "Kids log assignments and grades by subject. Adults see a grade summary per child.",
+  "entrypoint": "index.html",
+  "runtime": "static",
+  "category": "kids",
+  "tags": ["homework", "grades", "education", "kids"],
+  "storage": "db",
+  "data_access": {
+    "reads": ["family.members"],
+    "writes": []
+  },
+  "permissions": {
+    "default_audience": "everyone",
+    "requires_approval": false
+  },
+  "ai_access": {
+    "allowed": true,
+    "mode": "read",
+    "db_exports": ["assignments_summary", "grades_by_subject"]
+  },
+  "resource_limits": {
+    "max_db_bytes": 52428800
+  },
+  "nav": { "label": "Homework" },
+  "icon": "📝"
+}
