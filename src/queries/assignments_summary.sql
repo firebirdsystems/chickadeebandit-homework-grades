@@ -7,7 +7,6 @@ SELECT
   a.status,
   a.grade,
   a.notes
-FROM assignments a
-WHERE a.household_id = current_setting('app.household_id', true)::uuid
+FROM app_homework_grades__assignments a
 ORDER BY a.due_date ASC NULLS LAST, a.created_at DESC
 LIMIT 200

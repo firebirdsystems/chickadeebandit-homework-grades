@@ -163,7 +163,7 @@ async function loadMembers() {
 
 async function loadAssignments() {
   const { rows } = await dbq(
-    `SELECT * FROM assignments WHERE household_id = current_setting('app.household_id', true)::uuid ORDER BY due_date ASC NULLS LAST, created_at DESC`
+    `SELECT * FROM app_homework_grades__assignments ORDER BY due_date ASC NULLS LAST, created_at DESC`
   );
   if (rows?.length) {
     assignments = rows;
@@ -458,7 +458,7 @@ window.submitAssignment = async function(existingId) {
     render();
     try {
       await dbq(
-        `UPDATE assignments SET subject=$1, title=$2, due_date=$3, status=$4, grade=$5, notes=$6, updated_at=$7 WHERE id=$8 AND household_id=current_setting('app.household_id',true)::uuid`,
+        `UPDATE app_homework_grades__assignments SET subject=$1, title=$2, due_date=$3, status=$4, grade=$5, notes=$6, updated_at=$7 WHERE id=$8`,
         [subject, title, dueDate, status, grade, notes, now, existingId]
       );
     } catch (e) {
@@ -473,7 +473,7 @@ window.submitAssignment = async function(existingId) {
     render();
     try {
       await dbq(
-        `INSERT INTO assignments (id, household_id, member_id, subject, title, due_date, status, grade, notes, created_at, updated_at) VALUES ($1, current_setting('app.household_id',true)::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+        `INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, grade, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
         [id, memberId, subject, title, dueDate, status, grade, notes, now]
       );
     } catch (e) {
@@ -491,7 +491,7 @@ window.deleteAssignment = async function(id) {
   assignments = assignments.filter(a => a.id !== id);
   render();
   try {
-    await dbq(`DELETE FROM assignments WHERE id=$1 AND household_id=current_setting('app.household_id',true)::uuid`, [id]);
+    await dbq(`DELETE FROM app_homework_grades__assignments WHERE id=$1`, [id]);
   } catch (e) {
     assignments = prev;
     render();
