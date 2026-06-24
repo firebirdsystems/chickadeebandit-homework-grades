@@ -16,6 +16,13 @@
     "default_audience": "everyone",
     "requires_approval": false
   },
+  "row_policies": {
+    "assignments": {
+      "kind": "owner_only",
+      "member_column": "member_id"
+    }
+  },
+  "db_plaintext_columns": ["due_date", "subject"],
   "ai_access": {
     "allowed": true,
     "mode": "read",

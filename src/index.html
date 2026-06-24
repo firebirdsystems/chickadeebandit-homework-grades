@@ -135,6 +135,15 @@ const STATUSES = [
   { id: "submitted", label: "Submitted" },
   { id: "graded",    label: "Graded" },
 ];
+const STATUS_IDS = new Set(STATUSES.filter(s => s.id !== "all").map(s => s.id));
+
+function isSafeId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value);
+}
+
+function normalizedStatus(value) {
+  return STATUS_IDS.has(value) ? value : "pending";
+}
 
 async function dbq(sql, params = []) {
   if (!DB) return { rows: [] };
@@ -166,7 +175,9 @@ async function loadAssignments() {
     `SELECT * FROM app_homework_grades__assignments ORDER BY due_date ASC NULLS LAST, created_at DESC`
   );
   if (rows?.length) {
-    assignments = rows;
+    assignments = rows
+      .filter(a => isSafeId(a.id) && isSafeId(a.member_id))
+      .map(a => ({ ...a, status: normalizedStatus(a.status) }));
   } else if (!DB) {
     const today = new Date().toISOString().slice(0, 10);
     assignments = [
@@ -272,7 +283,7 @@ function renderList(el) {
       <div class="card-left">
         <div class="card-top">
           <span class="subject-chip">${esc(a.subject)}</span>
-          <span class="status-badge status-${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
+          <span class="status-badge status-${normalizedStatus(a.status)}">${esc(normalizedStatus(a.status).charAt(0).toUpperCase() + normalizedStatus(a.status).slice(1))}</span>
           ${a.grade ? `<span class="grade-chip">${esc(a.grade)}</span>` : ""}
           ${showMember ? `<span class="member-badge">${esc(memberName(a.member_id))}</span>` : ""}
         </div>
@@ -441,7 +452,7 @@ window.submitAssignment = async function(existingId) {
   if (!title) { document.getElementById("f-title").focus(); return; }
 
   const subject  = document.getElementById("f-subject").value;
-  const status   = document.getElementById("f-status").value;
+  const status   = normalizedStatus(document.getElementById("f-status").value);
   const dueDate  = document.getElementById("f-due").value || "";
   const grade    = document.getElementById("f-grade").value.trim();
   const notes    = document.getElementById("f-notes").value.trim();
@@ -458,7 +469,7 @@ window.submitAssignment = async function(existingId) {
     render();
     try {
       await dbq(
-        `UPDATE app_homework_grades__assignments SET subject=$1, title=$2, due_date=$3, status=$4, grade=$5, notes=$6, updated_at=$7 WHERE id=$8`,
+        `UPDATE app_homework_grades__assignments SET subject=?, title=?, due_date=?, status=?, grade=?, notes=?, updated_at=? WHERE id=?`,
         [subject, title, dueDate, status, grade, notes, now, existingId]
       );
     } catch (e) {
@@ -473,8 +484,8 @@ window.submitAssignment = async function(existingId) {
     render();
     try {
       await dbq(
-        `INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, grade, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
-        [id, memberId, subject, title, dueDate, status, grade, notes, now]
+        `INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, grade, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, memberId, subject, title, dueDate, status, grade, notes, now, now]
       );
     } catch (e) {
       assignments = assignments.filter(a => a.id !== id);
@@ -491,7 +502,7 @@ window.deleteAssignment = async function(id) {
   assignments = assignments.filter(a => a.id !== id);
   render();
   try {
-    await dbq(`DELETE FROM app_homework_grades__assignments WHERE id=$1`, [id]);
+    await dbq(`DELETE FROM app_homework_grades__assignments WHERE id=?`, [id]);
   } catch (e) {
     assignments = prev;
     render();
