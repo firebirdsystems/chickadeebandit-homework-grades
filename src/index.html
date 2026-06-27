@@ -112,7 +112,7 @@
 </div>
 
 <script type="module">
-import { esc, isAdult, hubConfirm } from "/hub-sdk.js";
+import { hubAlert, esc, isAdult, hubConfirm } from "/hub-sdk.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB      = window.__DB_URL ?? "";
@@ -475,7 +475,7 @@ window.submitAssignment = async function(existingId) {
     } catch (e) {
       assignments = prev;
       render();
-      alert(`Error saving assignment: ${e.message}`);
+      hubAlert(`Error saving assignment: ${e.message}`);
     }
   } else {
     const id = crypto.randomUUID();
@@ -490,7 +490,7 @@ window.submitAssignment = async function(existingId) {
     } catch (e) {
       assignments = assignments.filter(a => a.id !== id);
       render();
-      alert(`Error saving assignment: ${e.message}`);
+      hubAlert(`Error saving assignment: ${e.message}`);
     }
   }
 };
@@ -506,7 +506,7 @@ window.deleteAssignment = async function(id) {
   } catch (e) {
     assignments = prev;
     render();
-    alert(`Error deleting assignment: ${e.message}`);
+    hubAlert(`Error deleting assignment: ${e.message}`);
   }
 };
 
