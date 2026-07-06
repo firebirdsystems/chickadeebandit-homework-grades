@@ -171,8 +171,11 @@ async function loadMembers() {
 }
 
 async function loadAssignments() {
+  // (due_date IS NULL) rather than NULLS LAST: the hub's SQL rewriter cannot
+  // parse NULLS LAST, and unparseable statements against policy-governed
+  // tables are rejected outright.
   const { rows } = await dbq(
-    `SELECT * FROM app_homework_grades__assignments ORDER BY due_date ASC NULLS LAST, created_at DESC`
+    `SELECT * FROM app_homework_grades__assignments ORDER BY (due_date IS NULL), due_date ASC, created_at DESC`
   );
   if (rows?.length) {
     assignments = rows
