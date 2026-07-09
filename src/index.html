@@ -113,6 +113,12 @@
 
 <script type="module">
 import { hubAlert, esc, isAdult, hubConfirm } from "/hub-sdk.js";
+import {
+  SUBJECTS, STATUSES, STATUS_IDS, isSafeId, normalizedStatus,
+  memberName as memberNameOf, scopedAssignments as scopedAssignmentsOf,
+  filteredAssignments as filteredAssignmentsOf, isOverdue as isOverdueOf, isToday as isTodayOf,
+  statusCounts, fmtDate,
+} from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB      = window.__DB_URL ?? "";
@@ -127,23 +133,6 @@ let activeMemberId = null;
 let activeStatus   = "all";
 let activeView     = "list";
 let modalEl        = null;
-
-const SUBJECTS = ["Math", "English", "Science", "History", "Geography", "Art", "Music", "PE", "Other"];
-const STATUSES = [
-  { id: "all",       label: "All" },
-  { id: "pending",   label: "Pending" },
-  { id: "submitted", label: "Submitted" },
-  { id: "graded",    label: "Graded" },
-];
-const STATUS_IDS = new Set(STATUSES.filter(s => s.id !== "all").map(s => s.id));
-
-function isSafeId(value) {
-  return typeof value === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value);
-}
-
-function normalizedStatus(value) {
-  return STATUS_IDS.has(value) ? value : "pending";
-}
 
 async function dbq(sql, params = []) {
   if (!DB) return { rows: [] };
@@ -196,30 +185,14 @@ async function loadAssignments() {
 }
 
 const amAdult    = () => { const m = me(); return m ? isAdult(m, members) : false; };
-const memberName = id => members.find(m => m.id === id)?.name ?? "Unknown";
+const memberName = id => memberNameOf(members, id);
 
-function scopedAssignments() {
-  const currentMe = me();
-  if (activeMemberId) return assignments.filter(a => a.member_id === activeMemberId);
-  if (currentMe && !isAdult(currentMe, members)) return assignments.filter(a => a.member_id === currentMe.id);
-  return assignments;
-}
-
-function filteredAssignments() {
-  const scoped = scopedAssignments();
-  if (activeStatus === "all") return scoped;
-  return scoped.filter(a => a.status === activeStatus);
-}
+function scopedAssignments() { return scopedAssignmentsOf(assignments, activeMemberId, me()); }
+function filteredAssignments() { return filteredAssignmentsOf(assignments, activeMemberId, me(), activeStatus); }
 
 const today = () => new Date().toISOString().slice(0, 10);
-const isOverdue = a => a.due_date && a.status !== "graded" && a.due_date < today();
-const isToday   = a => a.due_date === today();
-
-function fmtDate(s) {
-  if (!s) return "";
-  try { return new Date(s + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
-  catch { return s; }
-}
+const isOverdue = a => isOverdueOf(a, today());
+const isToday   = a => isTodayOf(a, today());
 
 function renderTabs() {
   const el = document.getElementById("member-tabs");
@@ -243,8 +216,7 @@ function renderStatusTabs() {
   const el = document.getElementById("status-tabs");
   if (activeView === "summary") { el.innerHTML = ""; return; }
   const scoped = scopedAssignments();
-  const counts = { all: scoped.length, pending: 0, submitted: 0, graded: 0 };
-  scoped.forEach(a => { if (counts[a.status] !== undefined) counts[a.status]++; });
+  const counts = statusCounts(scoped);
   el.innerHTML = STATUSES.map(s =>
     `<button class="tab ${activeStatus === s.id ? "active" : ""}" onclick="setStatus('${s.id}')">
       ${s.label}${counts[s.id] ? ` <span style="opacity:0.65">(${counts[s.id]})</span>` : ""}
