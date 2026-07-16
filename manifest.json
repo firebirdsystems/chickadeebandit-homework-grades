@@ -1,15 +1,22 @@
 {
   "id": "homework-grades",
   "name": "Homework & Grades",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Kids log assignments and grades by subject. Adults see a grade summary per child.",
   "entrypoint": "index.html",
   "runtime": "static",
   "category": "kids",
-  "tags": ["homework", "grades", "education", "kids"],
+  "tags": [
+    "homework",
+    "grades",
+    "education",
+    "kids"
+  ],
   "storage": "db",
   "data_access": {
-    "reads": ["family.members"],
+    "reads": [
+      "family.members"
+    ],
     "writes": []
   },
   "permissions": {
@@ -22,15 +29,30 @@
       "member_column": "member_id"
     }
   },
-  "db_plaintext_columns": ["due_date", "subject"],
+  "db_plaintext_columns": [
+    "due_date",
+    "subject"
+  ],
   "ai_access": {
     "allowed": true,
     "mode": "read",
-    "db_exports": ["assignments_summary", "grades_by_subject"]
+    "db_exports": [
+      "assignments_summary",
+      "grades_by_subject"
+    ]
   },
   "resource_limits": {
     "max_db_bytes": 52428800
   },
-  "nav": { "label": "Homework" },
-  "icon": "📝"
+  "nav": {
+    "label": "Homework"
+  },
+  "agenda": {
+    "kind": "task",
+    "source": {
+      "kind": "sql",
+      "query": "SELECT id AS id, title AS title, subject AS subtitle, due_date AS when_at, member_id AS member_id, (status != 'pending') AS done FROM app_homework_grades__assignments WHERE due_date = :today LIMIT 20"
+    }
+  },
+  "icon": "\ud83d\udcdd"
 }
