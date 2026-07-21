@@ -185,6 +185,14 @@ async function loadAssignments() {
 }
 
 const amAdult    = () => { const m = me(); return m ? isAdult(m, members) : false; };
+const IS_ADMIN   = window.__IS_ADMIN === true;
+const IS_ROSTER  = window.__SPACE_KIND === "roster";
+// Supervision — see across everyone, edit others, log on someone's behalf. In a
+// roster (classroom) that's the teacher (steward) alone; every other member,
+// adult or not, sees and logs only their own work. Elsewhere any adult
+// supervises. Matches the hub owner_only + adults_bypass policy, where the
+// bypass is steward-only in a space (isSupervisor === isAdmin).
+const canSupervise = () => IS_ROSTER ? IS_ADMIN : amAdult();
 const memberName = id => memberNameOf(members, id);
 
 function scopedAssignments() { return scopedAssignmentsOf(assignments, activeMemberId, me()); }
@@ -196,7 +204,7 @@ const isToday   = a => isTodayOf(a, today());
 
 function renderTabs() {
   const el = document.getElementById("member-tabs");
-  if (!amAdult()) { el.innerHTML = ""; return; }
+  if (!canSupervise()) { el.innerHTML = ""; return; }
   const tabs = [{ id: null, label: "Everyone" }, ...members.map(m => ({ id: m.id, label: m.name }))];
   el.innerHTML = tabs.map(t =>
     `<button class="tab ${activeMemberId === t.id ? "active" : ""}" onclick="setMember(${t.id === null ? "null" : `'${esc(t.id)}'`})">${esc(t.label)}</button>`
@@ -205,7 +213,7 @@ function renderTabs() {
 
 function renderViewToggle() {
   const el = document.getElementById("view-toggle-area");
-  if (!amAdult()) { el.innerHTML = ""; return; }
+  if (!canSupervise()) { el.innerHTML = ""; return; }
   el.innerHTML = `<div class="view-toggle">
     <button class="view-btn ${activeView === "list" ? "active" : ""}" onclick="setView('list')">Assignments</button>
     <button class="view-btn ${activeView === "summary" ? "active" : ""}" onclick="setView('summary')">Grade Summary</button>
@@ -226,13 +234,13 @@ function renderStatusTabs() {
 
 function renderContent() {
   const el = document.getElementById("main-content");
-  if (activeView === "summary" && amAdult()) { renderSummary(el); return; }
+  if (activeView === "summary" && canSupervise()) { renderSummary(el); return; }
   renderList(el);
 }
 
 function renderList(el) {
   const vis        = filteredAssignments();
-  const showMember = amAdult() && !activeMemberId;
+  const showMember = canSupervise() && !activeMemberId;
 
   if (!vis.length) {
     const qualifier = activeStatus !== "all" ? ` with status "${activeStatus}"` : "";
@@ -245,7 +253,7 @@ function renderList(el) {
   }
 
   el.innerHTML = `<div class="assignment-list">${vis.map(a => {
-    const canEdit  = amAdult() || a.member_id === me()?.id;
+    const canEdit  = canSupervise() || a.member_id === me()?.id;
     const overdue  = isOverdue(a);
     const todayDue = isToday(a);
     const dueCls   = overdue ? "overdue" : todayDue ? "today" : "";
@@ -359,7 +367,7 @@ function subjectSelectHtml(selected) {
 }
 
 window.openAddModal = function() {
-  const forField = amAdult()
+  const forField = canSupervise()
     ? `<div class="field"><label>For</label><select id="f-member">${memberSelectHtml(activeMemberId ?? me()?.id ?? members[0]?.id)}</select></div>`
     : "";
   openModal(`
@@ -490,7 +498,7 @@ window.deleteAssignment = async function(id) {
   if (!ME && !CONTEXT) {
     demoMe = members.find(m => m.role === "adult") ?? members[0] ?? null;
   }
-  if (me() && !amAdult()) activeMemberId = me().id;
+  if (me() && !canSupervise()) activeMemberId = me().id;
   render();
 })();
 </script>
