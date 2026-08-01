@@ -58,3 +58,12 @@ export function fmtDate(s) {
   try { return new Date(s + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
   catch { return s; }
 }
+
+/**
+ * Fields the in-app search matches against (see hub-sdk `searchMatch`).
+ * Subject and notes count as well as the title — homework is looked
+ * up as "the history essay", which is the subject plus a fragment.
+ */
+export function searchableFields(item) {
+  return [item.title, item.subject, item.notes, item.grade];
+}

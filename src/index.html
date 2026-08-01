@@ -96,6 +96,13 @@
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
     .btn-ghost { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 16px; font-size: 0.875rem; cursor: pointer; color: var(--text); }
     .btn-ghost:hover { background: var(--bg); }
+    .search-row { margin-bottom: 12px; }
+    .search-input {
+      width: 100%; border: 1.5px solid var(--border-mid, var(--border, #d1d5db));
+      border-radius: 8px; padding: 9px 11px; font: inherit;
+      background: var(--surface, var(--card, #fff)); color: var(--text, inherit);
+    }
+    .search-input:focus { outline: none; border-color: var(--accent, #6366f1); }
   </style>
 </head>
 <body>
@@ -108,16 +115,19 @@
   <div class="tabs" id="member-tabs"></div>
   <div id="view-toggle-area"></div>
   <div class="tabs" id="status-tabs"></div>
+  <div class="search-row" id="search-row" style="display:none">
+    <input id="search" class="search-input" type="search" placeholder="Search assignments…" aria-label="Search assignments" />
+  </div>
   <div id="main-content"></div>
 </div>
 
 <script type="module">
-import { hubAlert, esc, isAdult, hubConfirm } from "/hub-sdk.js";
+import { hubAlert, esc, isAdult, hubConfirm, searchMatch } from "/hub-sdk.js";
 import {
   SUBJECTS, STATUSES, STATUS_IDS, isSafeId, normalizedStatus,
   memberName as memberNameOf, scopedAssignments as scopedAssignmentsOf,
   filteredAssignments as filteredAssignmentsOf, isOverdue as isOverdueOf, isToday as isTodayOf,
-  statusCounts, fmtDate,
+  statusCounts, fmtDate, searchableFields,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -131,6 +141,7 @@ let members        = [];
 let assignments    = [];
 let activeMemberId = null;
 let activeStatus   = "all";
+let searchQ = "";       // in-app search (see logic.js searchableFields)
 let activeView     = "list";
 let modalEl        = null;
 
@@ -233,16 +244,29 @@ function renderStatusTabs() {
 }
 
 function renderContent() {
+  // The box belongs to the list view; the summary view is a roll-up, not a list.
+  const searchRow = document.getElementById("search-row");
+  const listView = !(activeView === "summary" && canSupervise());
+  if (searchRow) searchRow.style.display = listView && assignments.length ? "" : "none";
+
   const el = document.getElementById("main-content");
   if (activeView === "summary" && canSupervise()) { renderSummary(el); return; }
   renderList(el);
 }
 
 function renderList(el) {
-  const vis        = filteredAssignments();
+  const scoped     = filteredAssignments();
+  const vis        = searchQ ? scoped.filter(a => searchMatch(searchQ, searchableFields(a))) : scoped;
   const showMember = canSupervise() && !activeMemberId;
 
   if (!vis.length) {
+    if (searchQ) {
+      el.innerHTML = `<div class="empty">
+      <div class="empty-icon">🔍</div>
+      <div class="empty-title">Nothing matches "${esc(searchQ)}"</div>
+    </div>`;
+      return;
+    }
     const qualifier = activeStatus !== "all" ? ` with status "${activeStatus}"` : "";
     el.innerHTML = `<div class="empty">
       <div class="empty-icon">📚</div>
@@ -345,6 +369,13 @@ window.setDemoMe = function(id) {
 };
 
 function render() { renderDemoBar(); renderTabs(); renderViewToggle(); renderStatusTabs(); renderContent(); }
+
+// Only the content pane is redrawn, so the search box keeps focus.
+document.addEventListener("input", (e) => {
+  if (e.target.id !== "search") return;
+  searchQ = e.target.value;
+  renderContent();
+});
 
 function openModal(html) {
   closeModal();

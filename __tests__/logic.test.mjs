@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   SUBJECTS, STATUSES, STATUS_IDS, isSafeId, normalizedStatus, memberName,
-  scopedAssignments, filteredAssignments, isOverdue, isToday, statusCounts, fmtDate,
+  scopedAssignments, filteredAssignments, isOverdue, isToday, statusCounts, fmtDate, searchableFields,
 } from "../src/logic.js";
 
 describe("isSafeId", () => {
@@ -88,5 +88,13 @@ describe("constants", () => {
     expect(SUBJECTS).toContain("Math");
     expect(STATUSES[0].id).toBe("all");
     expect(STATUS_IDS.has("all")).toBe(false);
+  });
+});
+
+describe("searchableFields", () => {
+  it("matches on subject and notes, not just the assignment title", () => {
+    const fields = searchableFields({ title: "Essay", subject: "History", notes: "Tudors, 1500 words", grade: "B+" });
+    expect(fields).toContain("History");
+    expect(fields).toContain("Tudors, 1500 words");
   });
 });
