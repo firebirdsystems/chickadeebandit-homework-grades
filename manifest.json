@@ -34,6 +34,12 @@
     "due_date",
     "subject"
   ],
+  "member_references": {
+    "assignments": {
+      "column": "member_id",
+      "on_removed": "delete"
+    }
+  },
   "ai_access": {
     "allowed": true,
     "mode": "read",
