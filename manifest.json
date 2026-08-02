@@ -24,6 +24,18 @@
     "default_audience": "everyone",
     "requires_approval": false
   },
+  "glance": {
+    "source": {
+      "kind": "sql",
+      "query": "SELECT COUNT(*) AS n FROM app_homework_grades__assignments WHERE status = 'pending' AND due_date <> '' AND due_date <= date(:today, '+7 days') LIMIT 1"
+    },
+    "display": {
+      "template": "badge",
+      "count": "n",
+      "label": "assignments due",
+      "severity": "warn"
+    }
+  },
   "row_policies": {
     "assignments": {
       "kind": "owner_only",
