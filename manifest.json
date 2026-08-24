@@ -1,7 +1,7 @@
 {
   "id": "homework-grades",
   "name": "Homework & Grades",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Kids log assignments and grades by subject. Adults see a grade summary per child.",
   "entrypoint": "index.html",
   "runtime": "static",
@@ -63,6 +63,7 @@
   "resource_limits": {
     "max_db_bytes": 52428800
   },
+  "publishes": ["homework.assignment_submitted", "homework.assignment_graded"],
   "nav": {
     "label": "Homework"
   },

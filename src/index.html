@@ -133,6 +133,7 @@ import {
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB      = window.__DB_URL ?? "";
 const ME      = window.__CURRENT_MEMBER ?? null;
+const EVENTS_URL = window.__EVENTS_URL ?? "/api/events";
 
 let demoMe        = null;
 const me          = () => demoMe ?? ME;
@@ -153,6 +154,28 @@ async function dbq(sql, params = []) {
     body: JSON.stringify({ sql, params }),
   });
   return r.json();
+}
+
+/**
+ * Fire-and-forget publish. Identifiers and the fixed `subject` enum only —
+ * never the assignment title, the notes, or the grade value. Assignments are
+ * `owner_only`; the bus is household-wide.
+ */
+async function publishEvent(type, subjectId, payload = {}) {
+  if (!EVENTS_URL) return;
+  await fetch(EVENTS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, subject_id: subjectId, payload }),
+  }).catch(() => {});
+}
+
+/** The status transitions worth announcing, or null for everything else. */
+function statusEventType(previousStatus, nextStatus) {
+  if (nextStatus === previousStatus) return null;
+  if (nextStatus === "submitted") return "homework.assignment_submitted";
+  if (nextStatus === "graded") return "homework.assignment_graded";
+  return null;
 }
 
 async function loadMembers() {
@@ -475,6 +498,7 @@ window.submitAssignment = async function(existingId) {
 
   if (existingId) {
     const prev = [...assignments];
+    const previousStatus = prev.find(a => a.id === existingId)?.status ?? null;
     assignments = assignments.map(a => a.id === existingId
       ? { ...a, subject, title, due_date: dueDate, status, grade, notes, updated_at: now }
       : a
@@ -486,6 +510,17 @@ window.submitAssignment = async function(existingId) {
         `UPDATE app_homework_grades__assignments SET subject=?, title=?, due_date=?, status=?, grade=?, notes=?, updated_at=? WHERE id=?`,
         [subject, title, dueDate, status, grade, notes, now, existingId]
       );
+      // Announced on the transition only — re-saving an already-graded
+      // assignment must not re-fire for a consumer counting grades.
+      const type = statusEventType(previousStatus, status);
+      if (type) {
+        publishEvent(type, existingId, {
+          assignment_id: existingId,
+          member_id: memberId || undefined,
+          subject: subject || undefined,
+          due_date: dueDate || undefined,
+        });
+      }
     } catch (e) {
       assignments = prev;
       render();
@@ -501,6 +536,17 @@ window.submitAssignment = async function(existingId) {
         `INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, grade, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, memberId, subject, title, dueDate, status, grade, notes, now, now]
       );
+      // A new assignment created straight into submitted/graded counts as the
+      // transition — there is no earlier status it could have moved from.
+      const type = statusEventType(null, status);
+      if (type) {
+        publishEvent(type, id, {
+          assignment_id: id,
+          member_id: memberId || undefined,
+          subject: subject || undefined,
+          due_date: dueDate || undefined,
+        });
+      }
     } catch (e) {
       assignments = assignments.filter(a => a.id !== id);
       render();
