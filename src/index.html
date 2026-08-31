@@ -122,7 +122,7 @@
 </div>
 
 <script type="module">
-import { hubAlert, esc, isAdult, hubConfirm, searchMatch } from "/hub-sdk.js";
+import { hubAlert, esc, isAdult, hubConfirm, searchMatch, hubToday as today } from "/hub-sdk.js";
 import {
   SUBJECTS, STATUSES, STATUS_IDS, isSafeId, normalizedStatus,
   memberName as memberNameOf, scopedAssignments as scopedAssignmentsOf,
@@ -205,9 +205,9 @@ async function loadAssignments() {
       .filter(a => isSafeId(a.id) && isSafeId(a.member_id))
       .map(a => ({ ...a, status: normalizedStatus(a.status) }));
   } else if (!DB) {
-    const today = new Date().toISOString().slice(0, 10);
+    const dueToday = today();
     assignments = [
-      { id: "s1", member_id: "d2", subject: "Math", title: "Chapter 5 Worksheet", due_date: today, status: "pending", grade: "", notes: "", created_at: "", updated_at: "" },
+      { id: "s1", member_id: "d2", subject: "Math", title: "Chapter 5 Worksheet", due_date: dueToday, status: "pending", grade: "", notes: "", created_at: "", updated_at: "" },
       { id: "s2", member_id: "d2", subject: "English", title: "Book Report: Charlotte's Web", due_date: "2026-06-05", status: "submitted", grade: "", notes: "", created_at: "", updated_at: "" },
       { id: "s3", member_id: "d3", subject: "Science", title: "Volcano Project", due_date: "2026-05-28", status: "graded", grade: "A", notes: "Extra credit received!", created_at: "", updated_at: "" },
       { id: "s4", member_id: "d3", subject: "Math", title: "Multiplication Test", due_date: "2026-05-25", status: "graded", grade: "B+", notes: "", created_at: "", updated_at: "" },
@@ -232,7 +232,6 @@ const memberName = id => memberNameOf(members, id);
 function scopedAssignments() { return scopedAssignmentsOf(assignments, activeMemberId, me()); }
 function filteredAssignments() { return filteredAssignmentsOf(assignments, activeMemberId, me(), activeStatus); }
 
-const today = () => new Date().toISOString().slice(0, 10);
 const isOverdue = a => isOverdueOf(a, today());
 const isToday   = a => isTodayOf(a, today());
 
