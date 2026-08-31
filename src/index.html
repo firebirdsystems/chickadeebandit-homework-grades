@@ -194,11 +194,16 @@ async function loadMembers() {
 }
 
 async function loadAssignments() {
-  // (due_date IS NULL) rather than NULLS LAST: the hub's SQL rewriter cannot
-  // parse NULLS LAST, and unparseable statements against policy-governed
-  // tables are rejected outright.
+  // (due_date = '') rather than NULLS LAST: the hub's SQL rewriter cannot parse
+  // NULLS LAST, and unparseable statements against policy-governed tables are
+  // rejected outright. It compares against '' and not NULL because due_date is
+  // NOT NULL DEFAULT '' — `IS NULL` was constant-false here, so undated work
+  // sorted FIRST, which is the opposite of what this line is for.
+  //
+  // homework_assignments_due_order_idx indexes this exact expression. Keep the
+  // two byte-identical or the planner silently stops using it.
   const { rows } = await dbq(
-    `SELECT * FROM app_homework_grades__assignments ORDER BY (due_date IS NULL), due_date ASC, created_at DESC`
+    `SELECT * FROM app_homework_grades__assignments ORDER BY (due_date = ''), due_date ASC, created_at DESC`
   );
   if (rows?.length) {
     assignments = rows

@@ -14,7 +14,7 @@
   ],
   "storage": "db",
   "preload": {
-    "assignments": {"sql": "SELECT * FROM app_homework_grades__assignments ORDER BY (due_date IS NULL), due_date ASC, created_at DESC"}
+    "assignments": {"sql": "SELECT * FROM app_homework_grades__assignments ORDER BY (due_date = ''), due_date ASC, created_at DESC"}
   },
   "contexts": ["household", "shared_space", "shared_space.roster"],
   "data_access": {
