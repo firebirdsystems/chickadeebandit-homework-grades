@@ -14,7 +14,8 @@
   ],
   "storage": "db",
   "preload": {
-    "assignments": {"sql": "SELECT * FROM app_homework_grades__assignments ORDER BY (due_date = ''), due_date ASC, created_at DESC"}
+    "active": {"sql": "SELECT * FROM app_homework_grades__assignments WHERE status IN ('pending', 'submitted') ORDER BY (due_date = ''), due_date ASC, created_at DESC"},
+    "graded_page": {"sql": "SELECT * FROM app_homework_grades__assignments WHERE status = 'graded' ORDER BY due_date DESC, id DESC LIMIT 25 OFFSET 0"}
   },
   "contexts": ["household", "shared_space", "shared_space.roster"],
   "data_access": {

@@ -128,6 +128,7 @@ import {
   memberName as memberNameOf, scopedAssignments as scopedAssignmentsOf,
   filteredAssignments as filteredAssignmentsOf, isOverdue as isOverdueOf, isToday as isTodayOf,
   statusCounts, fmtDate, searchableFields,
+  pageSizeOf, pageSqlAt, COUNTED_STATUSES, sortAssignments,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -143,6 +144,8 @@ let assignments    = [];
 let activeMemberId = null;
 let activeStatus   = "all";
 let searchQ = "";       // in-app search (see logic.js searchableFields)
+let searchLoading = false;
+let searchIncomplete = false;   // the archive could not be pulled, so search recall is partial
 let activeView     = "list";
 let modalEl        = null;
 
@@ -202,9 +205,27 @@ async function loadAssignments() {
   //
   // homework_assignments_due_order_idx indexes this exact expression. Keep the
   // two byte-identical or the planner silently stops using it.
-  const { rows } = await dbq(
-    `SELECT * FROM app_homework_grades__assignments ORDER BY (due_date = ''), due_date ASC, created_at DESC`
-  );
+  // Two reads, not one. This runs server-side on every launch, and a household
+  // that has used the app for a few school years was fetching every assignment
+  // ever set to draw a screen that opens on work still outstanding.
+  //
+  // The WORKING SET (pending + submitted) is read whole and stays whole, at any
+  // age: an assignment nobody has handed in is actionable however old it is, so
+  // capping it would hide exactly the rows this app exists to surface. The
+  // GRADED ARCHIVE only grows, so it arrives a page at a time
+  // (loadMoreGraded) and in full only when something needs all of it — a
+  // search, or the Grade Summary roll-up (loadAllGraded).
+  //
+  // `status IN (...)` rather than `!= 'graded'`: SQLite cannot use an index for
+  // `!=`. The two lists together are the whole CHECK constraint on `status`, so
+  // no row can fall between them; a migration adding a fourth status must add
+  // it to one of them or those assignments become invisible.
+  const [activeRes, gradedRes] = await Promise.all([
+    dbq(`SELECT * FROM app_homework_grades__assignments WHERE status IN ('pending', 'submitted') ORDER BY (due_date = ''), due_date ASC, created_at DESC`),
+    dbq(GRADED_FIRST_PAGE_SQL),
+  ]);
+  const rows = [...(activeRes.rows ?? []), ...(gradedRes.rows ?? [])];
+  notedGradedFetched(gradedRes.rows ?? []);
   if (rows?.length) {
     assignments = rows
       .filter(a => isSafeId(a.id) && isSafeId(a.member_id))
@@ -218,9 +239,62 @@ async function loadAssignments() {
       { id: "s4", member_id: "d3", subject: "Math", title: "Multiplication Test", due_date: "2026-05-25", status: "graded", grade: "B+", notes: "", created_at: "", updated_at: "" },
       { id: "s5", member_id: "d2", subject: "History", title: "Civil War Essay", due_date: "2026-06-10", status: "pending", grade: "", notes: "Need to finish bibliography.", created_at: "", updated_at: "" },
     ];
+    gradedComplete = true;   // demo mode holds every row already
   } else {
     assignments = [];
   }
+}
+
+// ── Graded archive paging ──────────────────────────────────────────────────
+//
+// One literal, everything derived. The first page has to be spelled out because
+// the hub's admission validator rejects a parameterised LIMIT/OFFSET, and
+// because manifest.preload matches on statement text — so page 1 must exist
+// here verbatim to line up with what the manifest declares.
+const GRADED_FIRST_PAGE_SQL = `SELECT * FROM app_homework_grades__assignments WHERE status = 'graded' ORDER BY due_date DESC, id DESC LIMIT 25 OFFSET 0`;
+const PAGE_SIZE = pageSizeOf(GRADED_FIRST_PAGE_SQL);
+const gradedPageSql = (offset) => pageSqlAt(GRADED_FIRST_PAGE_SQL, offset);
+
+// How many graded rows the SERVER has handed us, which is the paging offset.
+// Deliberately not a count of the loaded array: grading an assignment in this
+// session moves a row into the graded set that the server ordering already
+// counted at its own position, and paging off that number would skip a row.
+let gradedFetched = 0;
+let gradedComplete = false;
+
+function notedGradedFetched(rows) {
+  gradedFetched += rows.length;
+  if (rows.length < PAGE_SIZE) gradedComplete = true;
+}
+
+function mergeAssignments(rows) {
+  const seen = new Set(assignments.map(a => a.id));
+  const fresh = (rows ?? [])
+    .filter(a => isSafeId(a.id) && isSafeId(a.member_id) && !seen.has(a.id))
+    .map(a => ({ ...a, status: normalizedStatus(a.status) }));
+  assignments = [...assignments, ...fresh];
+}
+
+async function loadMoreGraded() {
+  if (!DB || gradedComplete) return;
+  const { rows } = await dbq(gradedPageSql(gradedFetched));
+  notedGradedFetched(rows ?? []);
+  mergeAssignments(rows);
+}
+
+// Search matches the title and notes, which are ENCRYPTED at rest, so it can
+// never become a SQL LIKE — it runs client-side over loaded rows. The Grade
+// Summary is an all-time roll-up by subject. Both are wrong over a partial
+// archive, so both pull the rest of it first. Paying that on a deliberate
+// action is the point; what we removed is paying it on every launch. The
+// promise is the guard, so repeated keystrokes cannot start a second read.
+let allGradedPromise = null;
+function loadAllGraded() {
+  if (!DB || gradedComplete) return Promise.resolve();
+  allGradedPromise ??= dbq(`SELECT * FROM app_homework_grades__assignments WHERE status = 'graded' ORDER BY due_date DESC, id DESC`)
+    .then(({ rows }) => { mergeAssignments(rows); gradedComplete = true; })
+    .catch((e) => { allGradedPromise = null; throw e; });
+  return allGradedPromise;
 }
 
 const amAdult    = () => { const m = me(); return m ? isAdult(m, members) : false; };
@@ -235,7 +309,10 @@ const canSupervise = () => IS_ROSTER ? IS_ADMIN : amAdult();
 const memberName = id => memberNameOf(members, id);
 
 function scopedAssignments() { return scopedAssignmentsOf(assignments, activeMemberId, me()); }
-function filteredAssignments() { return filteredAssignmentsOf(assignments, activeMemberId, me(), activeStatus); }
+// Sorted on the way out: `assignments` is now two reads concatenated (working
+// set ascending, graded archive descending and paged), so the array's own order
+// is no longer an order worth rendering. See sortAssignments in logic.js.
+function filteredAssignments() { return sortAssignments(filteredAssignmentsOf(assignments, activeMemberId, me(), activeStatus), activeStatus); }
 
 const isOverdue = a => isOverdueOf(a, today());
 const isToday   = a => isTodayOf(a, today());
@@ -263,9 +340,10 @@ function renderStatusTabs() {
   if (activeView === "summary") { el.innerHTML = ""; return; }
   const scoped = scopedAssignments();
   const counts = statusCounts(scoped);
+  // Counts only where the set is complete — see COUNTED_STATUSES in logic.js.
   el.innerHTML = STATUSES.map(s =>
     `<button class="tab ${activeStatus === s.id ? "active" : ""}" onclick="setStatus('${s.id}')">
-      ${s.label}${counts[s.id] ? ` <span style="opacity:0.65">(${counts[s.id]})</span>` : ""}
+      ${s.label}${COUNTED_STATUSES.has(s.id) && counts[s.id] ? ` <span style="opacity:0.65">(${counts[s.id]})</span>` : ""}
     </button>`
   ).join("");
 }
@@ -290,7 +368,8 @@ function renderList(el) {
     if (searchQ) {
       el.innerHTML = `<div class="empty">
       <div class="empty-icon">🔍</div>
-      <div class="empty-title">Nothing matches "${esc(searchQ)}"</div>
+      <div class="empty-title">${searchLoading ? "Searching…" : `Nothing matches "${esc(searchQ)}"`}</div>
+      ${!searchLoading && searchIncomplete ? `<div>Older graded work could not be loaded, so this search is incomplete. Check your connection and try again.</div>` : ""}
     </div>`;
       return;
     }
@@ -299,7 +378,10 @@ function renderList(el) {
       <div class="empty-icon">📚</div>
       <div class="empty-title">No assignments${qualifier}</div>
       <div>Tap "+ Add Assignment" to get started.</div>
-    </div>`;
+    </div>${archiveMoreHtml()}`;
+    // Still offer the archive here: a member can easily have nothing on the
+    // first page of graded work while having plenty further back.
+    bindLoadMore(el);
     return;
   }
 
@@ -330,7 +412,27 @@ function renderList(el) {
         <button class="btn-icon danger" onclick="deleteAssignment('${esc(a.id)}')">🗑</button>
       </div>` : ""}
     </div>`;
-  }).join("")}</div>`;
+  }).join("")}</div>${archiveMoreHtml()}`;
+  bindLoadMore(el);
+}
+
+// The graded archive is paged, so offer the rest wherever it is on screen. A
+// search has already pulled all of it, so it never needs this.
+function archiveMoreHtml() {
+  const relevant = activeStatus === "graded" || activeStatus === "all";
+  if (gradedComplete || searchQ || !relevant) return "";
+  return `<button class="tab" id="load-more" style="width:100%;margin-top:12px">Show older graded work</button>`;
+}
+
+function bindLoadMore(el) {
+  const btn = el.querySelector("#load-more");
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = "Loading…";
+    try { await loadMoreGraded(); renderContent(); }
+    catch { btn.disabled = false; btn.textContent = "Show older graded work"; }
+  };
 }
 
 function renderSummary(el) {
@@ -401,6 +503,20 @@ function render() { renderDemoBar(); renderTabs(); renderViewToggle(); renderSta
 document.addEventListener("input", (e) => {
   if (e.target.id !== "search") return;
   searchQ = e.target.value;
+  // Search reads title and notes, which are encrypted at rest and so can only
+  // be matched client-side — pull the rest of the archive before searching it,
+  // or the results would silently be "whatever happens to be downloaded".
+  // A failure here has to be visible. Swallowing it would leave the search
+  // running over whatever pages happen to be downloaded and reporting "nothing
+  // matches" — a false negative about the family's own records, which is worse
+  // than saying the search is incomplete.
+  if (searchQ && !gradedComplete) {
+    searchLoading = true;
+    searchIncomplete = false;
+    loadAllGraded()
+      .catch(() => { searchIncomplete = true; })
+      .finally(() => { searchLoading = false; renderContent(); });
+  }
   renderContent();
 });
 
@@ -485,7 +601,13 @@ window.openEditModal = function(id) {
 
 window.setMember = function(id) { activeMemberId = id; render(); };
 window.setStatus = function(s)  { activeStatus = s; render(); };
-window.setView   = function(v)  { activeView = v; render(); };
+window.setView   = function(v)  {
+  activeView = v;
+  render();
+  // The summary rolls up every grade ever recorded, so it needs the whole
+  // archive, not the first page of it.
+  if (v === "summary" && !gradedComplete) loadAllGraded().then(render).catch(() => {});
+};
 window.closeModal = closeModal;
 
 window.submitAssignment = async function(existingId) {

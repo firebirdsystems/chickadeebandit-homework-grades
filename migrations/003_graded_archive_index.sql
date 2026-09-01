@@ -1,0 +1,23 @@
+-- Serves the graded archive's paged read:
+--
+--   WHERE status = 'graded' ORDER BY due_date DESC, id DESC LIMIT 25 OFFSET 0
+--
+-- The app used to load every assignment in one unbounded statement. It now
+-- reads the working set (pending + submitted, whole, at any age) separately
+-- from the graded archive, which is paged behind "Show older graded work" and
+-- pulled in full only when a search or the Grade Summary needs all of it. That
+-- split is what makes this statement indexable at all — the old one asked for
+-- the whole table by construction.
+--
+-- Leading with status turns the archive into a seek instead of a scan, and
+-- carrying due_date and id inside the index means each page comes straight out
+-- of it in order, with no sort step per page. Neither existing index can do
+-- this: homework_assignments_due_order_idx leads with the `(due_date = '')`
+-- expression, and homework_assignments_member_status_due_idx leads with
+-- member_id, which this statement does not constrain.
+--
+-- DESC is spelled out to match the ORDER BY exactly. Assignments with no due
+-- date (due_date is NOT NULL DEFAULT '') sort last under DESC, which is what an
+-- archive wants — undated work is not "the most recent".
+CREATE INDEX IF NOT EXISTS homework_assignments_graded_archive_idx
+  ON app_homework_grades__assignments (status, due_date DESC, id DESC);
