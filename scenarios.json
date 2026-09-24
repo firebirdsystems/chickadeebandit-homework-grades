@@ -1,0 +1,138 @@
+{
+  "scenarios": [
+    {
+      "name": "a child sees and edits only their own assignments; an adult sees every child's",
+      "members": { "parent": "adult", "kidA": "child", "kidB": "child" },
+      "steps": [
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, grade, created_at, updated_at) VALUES ('a_a', ?, 'Math', 'Fractions worksheet', '2026-01-10', 'pending', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), ('a_b', ?, 'Science', 'Volcano report', '2026-01-12', 'graded', 'B+', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["{{kidA}}", "{{kidB}}"]
+        },
+        {
+          "action": "db",
+          "as": "kidA",
+          "sql": "SELECT id FROM app_homework_grades__assignments",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "a_a" }] }
+        },
+        {
+          "action": "db",
+          "as": "kidA",
+          "sql": "SELECT id FROM app_homework_grades__assignments WHERE id = 'a_b'",
+          "expect": { "status": 200, "rowCount": 0 }
+        },
+        {
+          "action": "db",
+          "as": "kidA",
+          "sql": "UPDATE app_homework_grades__assignments SET grade = 'A+' WHERE id = 'a_b'"
+        },
+        {
+          "action": "db",
+          "as": "kidA",
+          "sql": "UPDATE app_homework_grades__assignments SET status = 'submitted' WHERE id = 'a_a'",
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "SELECT id, status, grade FROM app_homework_grades__assignments",
+          "expect": {
+            "status": 200,
+            "rowCount": 2,
+            "rowsContain": [
+              { "id": "a_a", "status": "submitted" },
+              { "id": "a_b", "status": "graded", "grade": "B+" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a child cannot file an assignment under a sibling's name — the owner column is forced to the caller",
+      "members": { "parent": "adult", "kidA": "child", "kidB": "child" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "kidA",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, created_at, updated_at) VALUES ('a_forged', ?, 'History', 'Timeline', '2026-01-15', 'pending', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z')",
+          "params": ["{{kidB}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kidB",
+          "sql": "SELECT id FROM app_homework_grades__assignments",
+          "expect": { "status": 200, "rowCount": 0 }
+        },
+        {
+          "action": "db",
+          "as": "kidA",
+          "sql": "SELECT id FROM app_homework_grades__assignments",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "a_forged" }] }
+        }
+      ]
+    },
+    {
+      "name": "status is limited to pending/submitted/graded",
+      "members": { "kid": "child" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, status, created_at, updated_at) VALUES ('a_bad', ?, 'Math', 'Quiz', 'done', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z')",
+          "params": ["{{kid}}"],
+          "expect": { "status": 400 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, status, created_at, updated_at) VALUES ('a_ok', ?, 'Math', 'Quiz', 'submitted', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z')",
+          "params": ["{{kid}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "SELECT id FROM app_homework_grades__assignments",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "a_ok" }] }
+        }
+      ]
+    },
+    {
+      "name": "grades_by_subject rolls up each child's assignments per subject for an adult",
+      "members": { "parent": "adult", "kidA": "child", "kidB": "child" },
+      "steps": [
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, status, grade, created_at, updated_at) VALUES ('m1', ?, 'Math', 'Worksheet 1', 'graded', 'A', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), ('m2', ?, 'Math', 'Worksheet 2', 'pending', '', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z'), ('s1', ?, 'Science', 'Lab', 'pending', '', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z')",
+          "params": ["{{kidA}}", "{{kidA}}", "{{kidB}}"]
+        },
+        {
+          "action": "named",
+          "as": "parent",
+          "kind": "query",
+          "name": "grades_by_subject",
+          "expect": {
+            "status": 200,
+            "rowCount": 2,
+            "rowsContain": [
+              { "subject": "Math", "total_assignments": 2, "graded_count": 1, "pending_count": 1 },
+              { "subject": "Science", "total_assignments": 1, "graded_count": 0, "pending_count": 1 }
+            ]
+          }
+        },
+        {
+          "action": "named",
+          "as": "kidB",
+          "kind": "query",
+          "name": "grades_by_subject",
+          "expect": {
+            "status": 200,
+            "rowCount": 1,
+            "rowsContain": [{ "subject": "Science", "total_assignments": 1 }]
+          }
+        }
+      ]
+    }
+  ]
+}
