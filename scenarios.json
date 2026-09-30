@@ -133,6 +133,54 @@
           }
         }
       ]
+    },
+    {
+      "name": "in a shared space only the steward sees and grades every member's assignments; a participant adult reaches only their own",
+      "context": "shared_space",
+      "members": { "a": "adult", "b": "adult", "steward": "admin" },
+      "steps": [
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "params": ["as-a", "{{a}}", "Math", "A's worksheet", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"]
+        },
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "params": ["as-b", "{{b}}", "Math", "B's worksheet", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"]
+        },
+        {
+          "action": "db",
+          "as": "a",
+          "sql": "SELECT id FROM app_homework_grades__assignments ORDER BY id",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "as-a" }] }
+        },
+        {
+          "action": "db",
+          "as": "a",
+          "sql": "UPDATE app_homework_grades__assignments SET grade = ? WHERE id = ?",
+          "params": ["F", "as-b"]
+        },
+        {
+          "action": "db",
+          "as": "steward",
+          "sql": "SELECT id, grade FROM app_homework_grades__assignments ORDER BY id",
+          "expect": { "status": 200, "rowCount": 2, "rowsContain": [{ "id": "as-b", "grade": "" }] }
+        },
+        {
+          "action": "db",
+          "as": "steward",
+          "sql": "UPDATE app_homework_grades__assignments SET status = 'graded', grade = ? WHERE id = ?",
+          "params": ["A", "as-b"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "b",
+          "sql": "SELECT status, grade FROM app_homework_grades__assignments",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "status": "graded", "grade": "A" }] }
+        }
+      ]
     }
   ]
 }
