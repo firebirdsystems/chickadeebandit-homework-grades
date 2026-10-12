@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 import {
   SUBJECTS, STATUSES, STATUS_IDS, isSafeId, normalizedStatus, memberName,
   scopedAssignments, filteredAssignments, isOverdue, isToday, statusCounts, fmtDate, searchableFields,
-  pageSizeOf, pageSqlAt, COUNTED_STATUSES, sortAssignments,
+  pageSizeOf, pageSqlAt, COUNTED_STATUSES, sortAssignments, supervisesAssignments, summaryMembers,
 } from "../src/logic.js";
 
 describe("isSafeId", () => {
@@ -192,5 +192,56 @@ describe("COUNTED_STATUSES", () => {
     // what happens to be downloaded and read as a fact.
     expect(COUNTED_STATUSES.has("graded")).toBe(false);
     expect(COUNTED_STATUSES.has("all")).toBe(false);
+  });
+});
+
+describe("supervisesAssignments mirrors owner_only adults_bypass", () => {
+  const adult = { id: "a", role: "adult" };
+  const child = { id: "c", role: "child" };
+  const space = (spaceKind, isAdmin) => ({ tenantKind: "shared_space", spaceKind, isAdmin });
+
+  it("is any adult in a household, which is the default", () => {
+    expect(supervisesAssignments(adult)).toBe(true);
+    expect(supervisesAssignments(adult, { tenantKind: "household", isAdmin: false })).toBe(true);
+    expect(supervisesAssignments(child)).toBe(false);
+    expect(supervisesAssignments(null)).toBe(false);
+  });
+
+  it("is not an adult who takes part in a general shared space", () => {
+    expect(supervisesAssignments(adult, space("general", false))).toBe(false);
+  });
+
+  it("is the steward of a general shared space", () => {
+    expect(supervisesAssignments(adult, space("general", true))).toBe(true);
+  });
+
+  it("is the steward alone in a roster", () => {
+    expect(supervisesAssignments(adult, space("roster", true))).toBe(true);
+    expect(supervisesAssignments(adult, space("roster", false))).toBe(false);
+    expect(supervisesAssignments(child, space("roster", false))).toBe(false);
+  });
+
+  it("is the steward in a co-parenting space", () => {
+    expect(supervisesAssignments(adult, space("coparenting", true))).toBe(true);
+    expect(supervisesAssignments(adult, space("coparenting", false))).toBe(false);
+  });
+});
+
+describe("summaryMembers", () => {
+  const members = [
+    { id: "a1", role: "adult" }, { id: "a2", role: "adult" }, { id: "c1", role: "child" },
+  ];
+
+  it("lists every child, with or without assignments", () => {
+    expect(summaryMembers(members, []).map(m => m.id)).toEqual(["c1"]);
+  });
+
+  it("adds an adult who has an assignment, and not one who has none", () => {
+    expect(summaryMembers(members, [{ member_id: "a2" }]).map(m => m.id)).toEqual(["a2", "c1"]);
+  });
+
+  it("covers a space of adult students", () => {
+    const adults = [{ id: "t", role: "adult" }, { id: "s1", role: "adult" }, { id: "s2", role: "adult" }];
+    expect(summaryMembers(adults, [{ member_id: "s1" }, { member_id: "s2" }, { member_id: "s1" }]).map(m => m.id)).toEqual(["s1", "s2"]);
   });
 });

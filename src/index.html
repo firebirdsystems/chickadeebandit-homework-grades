@@ -103,14 +103,18 @@
       background: var(--surface, var(--card, #fff)); color: var(--text, inherit);
     }
     .search-input:focus { outline: none; border-color: var(--accent, #6366f1); }
+    .load-error { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: var(--hub-tint-danger, #fee2e2); color: var(--hub-tint-danger-fg, #b91c1c); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+    .load-error-retry { background: none; border: 1px solid currentColor; border-radius: 8px; padding: 5px 10px; font: inherit; font-weight: 600; color: inherit; cursor: pointer; flex-shrink: 0; }
+    .load-error[hidden] { display: none; }
   </style>
 </head>
 <body>
 <div class="page">
   <div class="header">
     <h1><span id="page-glyph"></span> Homework &amp; Grades</h1>
-    <button class="btn-primary" onclick="openAddModal()">+ Add Assignment</button>
+    <button class="btn-primary" data-testid="add-assignment" onclick="openAddModal()">+ Add Assignment</button>
   </div>
+  <div class="load-error" data-testid="load-error" role="alert" id="load-error" hidden><span>Couldn’t load the assignments.</span> <button type="button" class="load-error-retry" data-testid="load-retry">Try again</button></div>
   <div id="demo-bar" style="display:none;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:16px;align-items:center;gap:8px;flex-wrap:wrap;"></div>
   <div class="tabs" id="member-tabs"></div>
   <div id="view-toggle-area"></div>
@@ -128,7 +132,7 @@ import {
   memberName as memberNameOf, scopedAssignments as scopedAssignmentsOf,
   filteredAssignments as filteredAssignmentsOf, isOverdue as isOverdueOf, isToday as isTodayOf,
   statusCounts, fmtDate, searchableFields,
-  pageSizeOf, pageSqlAt, COUNTED_STATUSES, sortAssignments,
+  pageSizeOf, pageSqlAt, COUNTED_STATUSES, sortAssignments, supervisesAssignments, summaryMembers,
 } from "./logic.js";
 
 // Static markup cannot call the SDK helpers, so fill the heading glyph from script.
@@ -159,7 +163,11 @@ async function dbq(sql, params = []) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql, params }),
   });
-  return r.json();
+  const json = await r.json().catch(() => null);
+  // fetch() does not reject on 4xx/5xx; a refused statement comes back as a
+  // JSON body with an `error` key.
+  if (!r.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || `Database request failed (${r.status})`);
+  return json;
 }
 
 /**
@@ -193,10 +201,14 @@ async function loadMembers() {
     ];
     return;
   }
-  try {
-    const res = await fetch(`${CONTEXT}?keys=family.members`);
-    members = ((await res.json())["family.members"]) ?? [];
-  } catch { members = []; }
+  // A roster that could not be read is a failed load, not an empty household.
+  const res = await fetch(`${CONTEXT}?keys=family.members`);
+  if (!res.ok) throw new Error(`context ${res.status}`);
+  const json = await res.json();
+  if (!json || typeof json !== "object") throw new Error("context: unexpected response");
+  // The hub answers 200 and names a key it could not resolve in `$errors`.
+  if (Array.isArray(json.$errors) && json.$errors.includes("family.members")) throw new Error("context: family.members did not resolve");
+  members = json["family.members"] ?? [];
 }
 
 async function loadAssignments() {
@@ -300,15 +312,16 @@ function loadAllGraded() {
   return allGradedPromise;
 }
 
-const amAdult    = () => { const m = me(); return m ? isAdult(m, members) : false; };
-const IS_ADMIN   = window.__IS_ADMIN === true;
-const IS_ROSTER  = window.__SPACE_KIND === "roster";
+const TENANT = { tenantKind: window.__TENANT_KIND ?? "household", spaceKind: window.__SPACE_KIND ?? null, isAdmin: window.__IS_ADMIN === true };
 // Supervision — see across everyone, edit others, log on someone's behalf. In a
-// roster (classroom) that's the teacher (steward) alone; every other member,
-// adult or not, sees and logs only their own work. Elsewhere any adult
-// supervises. Matches the hub owner_only + adults_bypass policy, where the
-// bypass is steward-only in a space (isSupervisor === isAdmin).
-const canSupervise = () => IS_ROSTER ? IS_ADMIN : amAdult();
+// household that is any adult. In a shared space of any kind (a classroom
+// roster included) it is the steward alone; every other member, adult or not,
+// sees and logs only their own work. Matches the hub owner_only + adults_bypass
+// policy (see logic.js supervisesAssignments).
+const canSupervise = () => supervisesAssignments(me(), TENANT);
+// The one line an adult taking part in a shared space gets where the member
+// tabs would be.
+const STEWARD_NOTE = "In a shared space, the steward sees everyone's assignments. You see your own.";
 const memberName = id => memberNameOf(members, id);
 
 function scopedAssignments() { return scopedAssignmentsOf(assignments, activeMemberId, me()); }
@@ -322,10 +335,14 @@ const isToday   = a => isTodayOf(a, today());
 
 function renderTabs() {
   const el = document.getElementById("member-tabs");
-  if (!canSupervise()) { el.innerHTML = ""; return; }
+  if (!canSupervise()) {
+    el.innerHTML = TENANT.tenantKind !== "household" && isAdult(me())
+      ? `<span data-testid="steward-note" style="font-size:0.82rem;color:var(--muted)">${esc(STEWARD_NOTE)}</span>` : "";
+    return;
+  }
   const tabs = [{ id: null, label: "Everyone" }, ...members.map(m => ({ id: m.id, label: m.name }))];
   el.innerHTML = tabs.map(t =>
-    `<button class="tab ${activeMemberId === t.id ? "active" : ""}" onclick="setMember(${t.id === null ? "null" : `'${esc(t.id)}'`})">${esc(t.label)}</button>`
+    `<button class="tab ${activeMemberId === t.id ? "active" : ""}" data-testid="member-tab" data-member-id="${esc(t.id ?? "")}" onclick="setMember(${t.id === null ? "null" : `'${esc(t.id)}'`})">${esc(t.label)}</button>`
   ).join("");
 }
 
@@ -333,14 +350,14 @@ function renderViewToggle() {
   const el = document.getElementById("view-toggle-area");
   if (!canSupervise()) { el.innerHTML = ""; return; }
   el.innerHTML = `<div class="view-toggle">
-    <button class="view-btn ${activeView === "list" ? "active" : ""}" onclick="setView('list')">Assignments</button>
-    <button class="view-btn ${activeView === "summary" ? "active" : ""}" onclick="setView('summary')">Grade Summary</button>
+    <button class="view-btn ${activeView === "list" ? "active" : ""}" data-testid="view-list" onclick="setView('list')">Assignments</button>
+    <button class="view-btn ${activeView === "summary" ? "active" : ""}" data-testid="view-summary" onclick="setView('summary')">Grade Summary</button>
   </div>`;
 }
 
 function renderStatusTabs() {
   const el = document.getElementById("status-tabs");
-  if (activeView === "summary") { el.innerHTML = ""; return; }
+  if (activeView === "summary" || loadFailed) { el.innerHTML = ""; return; }
   const scoped = scopedAssignments();
   const counts = statusCounts(scoped);
   // Counts only where the set is complete — see COUNTED_STATUSES in logic.js.
@@ -358,6 +375,7 @@ function renderContent() {
   if (searchRow) searchRow.style.display = listView && assignments.length ? "" : "none";
 
   const el = document.getElementById("main-content");
+  if (loadFailed) { el.innerHTML = ""; return; }
   if (activeView === "summary" && canSupervise()) { renderSummary(el); return; }
   renderList(el);
 }
@@ -398,20 +416,20 @@ function renderList(el) {
       : todayDue ? "Due today"
       : a.due_date ? `Due ${fmtDate(a.due_date)}`
       : "";
-    return `<div class="assignment-card">
+    return `<div class="assignment-card" data-testid="assignment-card" data-assignment-id="${esc(a.id)}">
       <div class="card-left">
         <div class="card-top">
           <span class="subject-chip">${esc(a.subject)}</span>
           <span class="status-badge status-${normalizedStatus(a.status)}">${esc(normalizedStatus(a.status).charAt(0).toUpperCase() + normalizedStatus(a.status).slice(1))}</span>
           ${a.grade ? `<span class="grade-chip">${esc(a.grade)}</span>` : ""}
-          ${showMember ? `<span class="member-badge">${esc(memberName(a.member_id))}</span>` : ""}
+          ${showMember ? `<span class="member-badge" data-testid="member-badge">${esc(memberName(a.member_id))}</span>` : ""}
         </div>
         <div class="card-title">${esc(a.title)}</div>
         ${dueLabel ? `<div class="card-meta"><span class="due-date ${dueCls}">${dueLabel}</span></div>` : ""}
         ${a.notes ? `<div class="card-notes">${esc(a.notes)}</div>` : ""}
       </div>
       ${canEdit ? `<div class="card-actions">
-        <button class="btn-icon" onclick="openEditModal('${esc(a.id)}')" aria-label="Edit assignment">${glyph("pencil")}</button>
+        <button class="btn-icon" data-testid="edit-assignment" onclick="openEditModal('${esc(a.id)}')" aria-label="Edit assignment">${glyph("pencil")}</button>
         <button class="btn-icon danger" onclick="deleteAssignment('${esc(a.id)}')" aria-label="Delete assignment">${glyph("trash")}</button>
       </div>` : ""}
     </div>`;
@@ -441,10 +459,10 @@ function bindLoadMore(el) {
 function renderSummary(el) {
   const children = activeMemberId
     ? members.filter(m => m.id === activeMemberId)
-    : members.filter(m => m.role === "child");
+    : summaryMembers(members, assignments);
 
   if (!children.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">${chickadee("perched", { size: 72 })}</div><div class="empty-title">No children found</div></div>`;
+    el.innerHTML = `<div class="empty" data-testid="summary-empty"><div class="empty-icon">${chickadee("perched", { size: 72 })}</div><div class="empty-title">No assignments to summarize yet</div></div>`;
     return;
   }
 
@@ -465,14 +483,14 @@ function renderSummary(el) {
         <span>${esc(subj)}</span>
         <div class="grade-tags">
           ${grades.length
-            ? grades.map(g => `<span class="grade-tag">${esc(g)}</span>`).join("")
+            ? grades.map(g => `<span class="grade-tag" data-testid="grade-tag">${esc(g)}</span>`).join("")
             : `<span class="no-grades">${items.length} assignment${items.length !== 1 ? "s" : ""}, no grades yet</span>`
           }
         </div>
       </div>`;
     }).join("");
 
-    return `<div class="summary-card">
+    return `<div class="summary-card" data-testid="summary-card" data-member-id="${esc(member.id)}">
       <div class="summary-header">
         <span>${esc(member.name)}</span>
         <span class="summary-meta">${memberAssignments.length} total · ${pending} pending · ${graded} graded</span>
@@ -545,7 +563,7 @@ function subjectSelectHtml(selected) {
 
 window.openAddModal = function() {
   const forField = canSupervise()
-    ? `<div class="field"><label>For</label><select id="f-member">${memberSelectHtml(activeMemberId ?? me()?.id ?? members[0]?.id)}</select></div>`
+    ? `<div class="field"><label>For</label><select id="f-member" data-testid="field-member">${memberSelectHtml(activeMemberId ?? me()?.id ?? members[0]?.id)}</select></div>`
     : "";
   openModal(`
     <div class="modal-title">Add Assignment</div>
@@ -560,7 +578,7 @@ window.openAddModal = function() {
         </select>
       </div>
     </div>
-    <div class="field"><label>Title <span class="opt">*</span></label><input type="text" id="f-title" placeholder="Assignment name" maxlength="200" /></div>
+    <div class="field"><label>Title <span class="opt">*</span></label><input type="text" id="f-title" data-testid="field-title" placeholder="Assignment name" maxlength="200" /></div>
     <div class="field-row">
       <div class="field"><label>Due Date <span class="opt">(optional)</span></label><input type="date" id="f-due" /></div>
       <div class="field"><label>Grade <span class="opt">(optional)</span></label><input type="text" id="f-grade" placeholder="A, B+, 95%" maxlength="20" /></div>
@@ -622,8 +640,13 @@ window.submitAssignment = async function(existingId) {
   const dueDate  = document.getElementById("f-due").value || "";
   const grade    = document.getElementById("f-grade").value.trim();
   const notes    = document.getElementById("f-notes").value.trim();
-  const memberId = document.getElementById("f-member")?.value ?? me()?.id ?? "";
   const now      = new Date().toISOString();
+  // The member the row is saved under: an edit never moves a row, and a new
+  // one goes to the picked member only for a supervisor — the hub stores
+  // anyone else's as their own.
+  const memberId = existingId
+    ? assignments.find(a => a.id === existingId)?.member_id ?? ""
+    : (canSupervise() ? document.getElementById("f-member")?.value : null) ?? me()?.id ?? "";
 
   if (existingId) {
     const prev = [...assignments];
@@ -635,10 +658,12 @@ window.submitAssignment = async function(existingId) {
     closeModal();
     render();
     try {
-      await dbq(
+      const { changed } = await dbq(
         `UPDATE app_homework_grades__assignments SET subject=?, title=?, due_date=?, status=?, grade=?, notes=?, updated_at=? WHERE id=?`,
         [subject, title, dueDate, status, grade, notes, now, existingId]
       );
+      // The hub changes nothing, without refusing, on a row the caller may not write.
+      if (changed === 0) throw new Error("this assignment is not yours to change.");
       // Announced on the transition only — re-saving an already-graded
       // assignment must not re-fire for a consumer counting grades.
       const type = statusEventType(previousStatus, status);
@@ -691,7 +716,9 @@ window.deleteAssignment = async function(id) {
   assignments = assignments.filter(a => a.id !== id);
   render();
   try {
-    await dbq(`DELETE FROM app_homework_grades__assignments WHERE id=?`, [id]);
+    const { changed } = await dbq(`DELETE FROM app_homework_grades__assignments WHERE id=?`, [id]);
+    // The hub deletes nothing, without refusing, for a row the caller may not remove.
+    if (changed === 0) throw new Error("this assignment is not yours to delete.");
   } catch (e) {
     assignments = prev;
     render();
@@ -699,14 +726,23 @@ window.deleteAssignment = async function(id) {
   }
 };
 
-(async () => {
-  await Promise.all([loadMembers(), loadAssignments()]);
+// True from a failed first load until a load succeeds. While it is, the page
+// lists nothing, claims nothing is empty, and offers no "+ Add Assignment".
+let loadFailed = false;
+async function firstLoad() {
+  let failed = false;
+  await Promise.all([loadMembers().catch(() => { failed = true; }), loadAssignments().catch(() => { assignments = []; failed = true; })]);
+  loadFailed = failed;
   if (!ME && !CONTEXT) {
     demoMe = members.find(m => m.role === "adult") ?? members[0] ?? null;
   }
   if (me() && !canSupervise()) activeMemberId = me().id;
+  document.getElementById("load-error").hidden = !loadFailed;
+  document.querySelector('[data-testid="add-assignment"]').style.display = loadFailed ? "none" : "";
   render();
-})();
+}
+document.querySelector('[data-testid="load-retry"]').addEventListener("click", firstLoad);
+firstLoad();
 </script>
 </body>
 </html>

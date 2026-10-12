@@ -4,6 +4,17 @@
 import { isAdult } from "./shared.js";
 export { isAdult };
 
+/**
+ * Whether a member sees, edits and logs other members' assignments. Mirrors the
+ * hub's rule for the assignments table (owner_only with the adult bypass): any
+ * adult in a household, and only the steward in a shared space of any kind.
+ * Everyone else reads and writes their own assignments alone, and one they add
+ * for somebody else is stored as their own.
+ */
+export function supervisesAssignments(member, { tenantKind = "household", spaceKind = null, isAdmin = false } = {}) {
+  return tenantKind === "household" ? isAdult(member) : isAdmin === true;
+}
+
 export const SUBJECTS = ["Math", "English", "Science", "History", "Geography", "Art", "Music", "PE", "Other"];
 export const STATUSES = [
   { id: "all",       label: "All" },
@@ -12,6 +23,16 @@ export const STATUSES = [
   { id: "graded",    label: "Graded" },
 ];
 export const STATUS_IDS = new Set(STATUSES.filter(s => s.id !== "all").map(s => s.id));
+
+/**
+ * The members the Grade Summary has a card for: every child, and anyone else
+ * who has an assignment. A tutor's students are adults, so listing children
+ * alone would leave the summary empty in a space like that.
+ */
+export function summaryMembers(members, assignments) {
+  const withWork = new Set((assignments ?? []).map(a => a.member_id));
+  return (members ?? []).filter(m => m.role === "child" || withWork.has(m.id));
+}
 
 export function isSafeId(value) {
   return typeof value === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value);

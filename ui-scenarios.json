@@ -1,0 +1,145 @@
+{
+  "scenarios": [
+    {
+      "name": "in a shared space a participant gets no member tabs, Grade Summary or For picker; the steward does, and the summary lists adults who have assignments",
+      "context": "shared_space",
+      "members": {
+        "steward": "admin",
+        "pat": "adult",
+        "sam": "adult"
+      },
+      "steps": [
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_homework_grades__assignments (id, member_id, subject, title, due_date, status, grade, created_at, updated_at) VALUES ('hw-pat', ?, 'Math', ?, '2026-01-12', 'graded', ?, '2026-01-05T00:00:00Z', '2026-01-13T00:00:00Z'), ('hw-sam', ?, 'History', ?, '2026-01-14', 'graded', ?, '2026-01-05T00:00:01Z', '2026-01-15T00:00:00Z')",
+          "params": [
+            "{{pat}}",
+            "Fractions quiz",
+            "A",
+            "{{sam}}",
+            "Essay on rivers",
+            "B+"
+          ]
+        },
+        {
+          "action": "open",
+          "as": "pat"
+        },
+        {
+          "action": "expectVisible",
+          "as": "pat",
+          "selector": "[data-testid=\"assignment-card\"][data-assignment-id=\"hw-pat\"] [data-testid=\"edit-assignment\"]"
+        },
+        {
+          "action": "expectCount",
+          "as": "pat",
+          "selector": "[data-testid=\"view-summary\"]",
+          "count": 0
+        },
+        {
+          "action": "expectCount",
+          "as": "pat",
+          "selector": "[data-testid=\"member-tab\"]",
+          "count": 0
+        },
+        {
+          "action": "expectVisible",
+          "as": "pat",
+          "selector": "[data-testid=\"steward-note\"]"
+        },
+        {
+          "action": "expectCount",
+          "as": "pat",
+          "selector": "[data-testid=\"assignment-card\"]",
+          "count": 1
+        },
+        {
+          "action": "click",
+          "as": "pat",
+          "selector": "[data-testid=\"add-assignment\"]"
+        },
+        {
+          "action": "expectVisible",
+          "as": "pat",
+          "selector": "[data-testid=\"field-title\"]"
+        },
+        {
+          "action": "expectCount",
+          "as": "pat",
+          "selector": "[data-testid=\"field-member\"]",
+          "count": 0
+        },
+        {
+          "action": "open",
+          "as": "steward"
+        },
+        {
+          "action": "expectVisible",
+          "as": "steward",
+          "selector": "[data-testid=\"assignment-card\"][data-assignment-id=\"hw-pat\"] [data-testid=\"edit-assignment\"]"
+        },
+        {
+          "action": "expectVisible",
+          "as": "steward",
+          "selector": "[data-testid=\"assignment-card\"][data-assignment-id=\"hw-sam\"] [data-testid=\"edit-assignment\"]"
+        },
+        {
+          "action": "expectCount",
+          "as": "steward",
+          "selector": "[data-testid=\"member-badge\"]",
+          "count": 2
+        },
+        {
+          "action": "expectCount",
+          "as": "steward",
+          "selector": "[data-testid=\"member-tab\"]",
+          "count": 4
+        },
+        {
+          "action": "expectCount",
+          "as": "steward",
+          "selector": "[data-testid=\"steward-note\"]",
+          "count": 0
+        },
+        {
+          "action": "expectVisible",
+          "as": "steward",
+          "selector": "[data-testid=\"view-summary\"]"
+        },
+        {
+          "action": "click",
+          "as": "steward",
+          "selector": "[data-testid=\"view-summary\"]"
+        },
+        {
+          "action": "expectCount",
+          "as": "steward",
+          "selector": "[data-testid=\"summary-card\"]",
+          "count": 2
+        },
+        {
+          "action": "expectCount",
+          "as": "steward",
+          "selector": "[data-testid=\"summary-empty\"]",
+          "count": 0
+        },
+        {
+          "action": "expectCount",
+          "as": "steward",
+          "selector": "[data-testid=\"grade-tag\"]",
+          "count": 2
+        },
+        {
+          "action": "click",
+          "as": "steward",
+          "selector": "[data-testid=\"add-assignment\"]"
+        },
+        {
+          "action": "expectVisible",
+          "as": "steward",
+          "selector": "[data-testid=\"field-member\"]"
+        }
+      ]
+    }
+  ]
+}
