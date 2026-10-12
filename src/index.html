@@ -663,7 +663,7 @@ window.submitAssignment = async function(existingId) {
         [subject, title, dueDate, status, grade, notes, now, existingId]
       );
       // The hub changes nothing, without refusing, on a row the caller may not write.
-      if (changed === 0) throw new Error("this assignment is not yours to change.");
+      if (changed === 0) throw Object.assign(new Error("this assignment is not yours to change."), { forUser: true });
       // Announced on the transition only — re-saving an already-graded
       // assignment must not re-fire for a consumer counting grades.
       const type = statusEventType(previousStatus, status);
@@ -678,7 +678,7 @@ window.submitAssignment = async function(existingId) {
     } catch (e) {
       assignments = prev;
       render();
-      hubAlert(`Error saving assignment: ${e.message}`);
+      writeFailed(e, "Error saving assignment", "Couldn’t save the assignment — try again.");
     }
   } else {
     const id = crypto.randomUUID();
@@ -704,10 +704,17 @@ window.submitAssignment = async function(existingId) {
     } catch (e) {
       assignments = assignments.filter(a => a.id !== id);
       render();
-      hubAlert(`Error saving assignment: ${e.message}`);
+      writeFailed(e, "Error saving assignment", "Couldn’t save the assignment — try again.");
     }
   }
 };
+
+// A failed write shows this app's own reason when the error carries one
+// (`forUser`), otherwise one fixed line; the hub's error text goes to the console.
+function writeFailed(e, headline, line) {
+  if (!e?.forUser) console.error("[homework-grades] write failed:", e);
+  hubAlert(e?.forUser ? `${headline}: ${e.message}` : line);
+}
 
 window.deleteAssignment = async function(id) {
   const ok = await hubConfirm({ message: "Delete this assignment?", confirmLabel: "Delete", destructive: true });
@@ -718,11 +725,11 @@ window.deleteAssignment = async function(id) {
   try {
     const { changed } = await dbq(`DELETE FROM app_homework_grades__assignments WHERE id=?`, [id]);
     // The hub deletes nothing, without refusing, for a row the caller may not remove.
-    if (changed === 0) throw new Error("this assignment is not yours to delete.");
+    if (changed === 0) throw Object.assign(new Error("this assignment is not yours to delete."), { forUser: true });
   } catch (e) {
     assignments = prev;
     render();
-    hubAlert(`Error deleting assignment: ${e.message}`);
+    writeFailed(e, "Error deleting assignment", "Couldn’t delete the assignment — try again.");
   }
 };
 
