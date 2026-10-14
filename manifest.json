@@ -64,9 +64,6 @@
       "grades_by_subject"
     ]
   },
-  "resource_limits": {
-    "max_db_bytes": 52428800
-  },
   "publishes": ["homework.assignment_submitted", "homework.assignment_graded"],
   "nav": {
     "label": "Homework"
